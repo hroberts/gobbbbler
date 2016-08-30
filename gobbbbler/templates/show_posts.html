@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block body %}
+    <form action="{{ url_for( 'add_post' ) }}" method="post" class="add-entry">
+      <dl>
+        <dt>
+        <dd><textarea name="post" rows="3" cols="80"></textarea>
+        <dd><input type="submit" value="gobbbble">
+      </dl>
+    </form>
+  <ul class="entries">
+  {% for post in posts %}
+    <li>{{ post.post_date.strftime('%Y-%m-%d') }}: @{{ post.user_name|safe }}: {{ post.post|safe }}</li>
+  {% else %}
+    <li>the turkeys are quiet.  gobbbble something!</li>
+  {% endfor %}
+  </ul>
+{% endblock %}

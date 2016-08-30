@@ -1,0 +1,3 @@
+graft gobbbbler/templates
+graft gobbbbler/static
+include gobbbbler/schema.sql

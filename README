@@ -1,0 +1,32 @@
+# Gobbbbler
+
+Gobbbbler is a simple micro blogging application based on a fork from the flask example app flaskr.
+Gobbbbler is intended for use in an intro programming class as a provider of a simple social
+media api.
+
+
+
+
+      2. install the app from the root of the project directory
+
+         pip install --editable .
+
+      3. Instruct flask to use the right application
+
+         export FLASK_APP=flaskr.flaskr
+
+      4. initialize the database with this command:
+
+         flask initdb
+
+      5. now you can run flaskr:
+
+         flask run
+
+         the application will greet you on
+         http://localhost:5000/
+
+    ~ Is it tested?
+
+      You betcha.  Run `python setup.py test` to see
+      the tests pass.
