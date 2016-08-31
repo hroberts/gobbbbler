@@ -11,13 +11,27 @@
 """
 
 import os
-import psycopg2
+import sqlalchemy
 
-from  psycopg2.extras import DictCursor
+from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Date
+from sqlalchemy.sql import text
 
-from flask import Flask, request, session, g, redirect, url_for, abort, \
-     render_template, flash
+from flask import Flask, request, session, g, redirect, url_for, abort, render_template, flash, jsonify
 
+# setup sqlalchemy database tables
+metadata = MetaData()
+users = Table( 'users', metadata,
+    Column( 'users_id', Integer, primary_key = True ),
+    Column( 'name', String ),
+    Column( 'email', String )
+)
+
+posts = Table( 'posts', metadata,
+    Column( 'posts_id', Integer, primary_key = True ),
+    Column( 'users_id', Integer ),
+    Column( 'post', String ),
+    Column( 'post_date', Date )
+)
 
 # create our little application :)
 app = Flask(__name__)
@@ -35,25 +49,39 @@ app.config.update(dict(
 ))
 app.config.from_envvar( 'GOBBBBLER_SETTINGS', silent=True )
 
+# DB FUNCTIONS
+
 def connect_db():
     """Connects to the specific database."""
-    db = psycopg2.connect(
-        "dbname='" + app.config['DATABASE'] + "' " +
-        "user='" + app.config['DATABASE_USER'] + "' " +
-        "password='" + app.config['DATABASE_PASSWORD'] + "' " +
-        "host='" + app.config['DATABASE_HOST'] + "'",
-        cursor_factory=DictCursor
-    )
-    return db
+    return sqlalchemy.create_engine(
+        'postgresql://' +
+        app.config[ 'DATABASE_USER' ] + ':' +
+        app.config[ 'DATABASE_PASSWORD' ] + '@' +
+        app.config[ 'DATABASE_HOST' ] + '/' +
+        app.config[ 'DATABASE' ] );
 
 
 def init_db():
     """Initializes the database."""
     db = get_db()
     with app.open_resource( 'schema.sql', mode='r' ) as f:
-        db.cursor().execute( f.read() )
-    db.commit()
+        db.execute( f.read() )
 
+
+def get_db():
+    """Opens a new database connection if there is none yet for the current application context.
+    return a connection for that database."""
+    if not hasattr(g, 'sqlite_db'):
+        g.db = connect_db()
+    return g.db.connect()
+
+@app.teardown_appcontext
+def close_db(error):
+    """Closes the database again at the end of the request."""
+    if hasattr(g, 'sqlite_db'):
+        g.db.close()
+
+# USER FUNCTIONS
 
 @app.cli.command('initdb')
 def initdb_command():
@@ -62,21 +90,44 @@ def initdb_command():
     print('Initialized the database.')
 
 
-def get_db():
-    """Opens a new database connection if there is none yet for the
-    current application context.
-    """
-    if not hasattr(g, 'sqlite_db'):
-        g.sqlite_db = connect_db()
-    return g.sqlite_db
+def authenticate_user( db, request ):
+    """authenticate the username and password from the request, return the corresponding user dict if successful and
+    False if not"""
 
+    username = request.values.get( 'username' )
+    password = request.values.get( 'password' )
 
-@app.teardown_appcontext
-def close_db(error):
-    """Closes the database again at the end of the request."""
-    if hasattr(g, 'sqlite_db'):
-        g.sqlite_db.close()
+    if ( not username or not password ):
+        return False
 
+    user = db.execute(
+        text( 'select users_id, name, email from users where name = :name and password_hash = md5( :salt || :password ) and is_active' ),
+        name = username, password = password, salt = app.config[ 'SECRET_KEY' ]
+    ).fetchone()
+
+    if ( user ):
+        return user
+    else:
+        return False
+
+def require_user( request ):
+    """return a user dict corresponding to the users_id in the session or return False"""
+
+    db = get_db()
+
+    if ( not 'users_id' in session ):
+        return False;
+
+    users_id = session[ 'users_id' ]
+
+    user = db.execute( text( "select users_id, name, email from users where users_id = :id and is_active" ), id = users_id ).fetchone()
+
+    if ( not user ):
+        return False;
+
+    return user
+
+# WEB APP END POINTS
 
 @app.route ('/' )
 def show_posts():
@@ -85,10 +136,8 @@ def show_posts():
         return redirect( url_for( 'login' ) )
 
     db = get_db()
-    cur = db.cursor()
 
-    cur.execute( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' )
-    posts = [ dict( result ) for result in cur.fetchall() ]
+    posts = db.execute( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ).fetchall()
 
     return render_template('show_posts.html', posts=posts, user=user )
 
@@ -106,13 +155,11 @@ def add_post():
         return redirect( url_for( 'show_posts' ) )
 
     db = get_db()
-    cur = db.cursor()
 
-    cur.execute( 'insert into posts ( users_id, post ) values ( %s, %s )', ( user.id, post ) );
-
-    db.commit()
+    db.execute( text( 'insert into posts ( users_id, post ) values ( :users_id, :post )' ), users_id = user[ 'users_id' ], post = post )
 
     return redirect( url_for( 'show_posts' ) )
+
 
 
 @app.route( '/login', methods=[ 'GET', 'POST' ] )
@@ -121,22 +168,12 @@ def login():
     if ( request.method == 'GET' ):
         return render_template( 'login.html' )
 
-    username = request.form[ 'username' ]
-    password = request.form[ 'password' ]
-
     db = get_db()
 
-    cur = db.cursor()
+    user = authenticate_user( db, request )
 
-    cur.execute(
-        'select users_id, name, email  from users where name = %s and password_hash = md5( %s ) and is_active',
-        ( username, password ) )
-
-    user_tuple = cur.fetchone()
-
-    if ( user_tuple ):
-        ( users_id, name, email ) = user_tuple
-        session[ 'users_id' ] = users_id
+    if ( user ):
+        session[ 'users_id' ] = user[ 'users_id' ]
         return redirect( url_for( 'show_posts' ) )
     else:
         return render_template( 'login.html', error = 'Login failed.' )
@@ -147,6 +184,7 @@ def logout():
     session.pop('users_id', None)
     flash('You were logged out')
     return redirect( url_for( 'login' ) )
+
 
 @app.route( '/register', methods=[ 'GET', 'POST' ] )
 def register():
@@ -162,42 +200,29 @@ def register():
         return render_template( 'register.html', error = 'username, email, and password are required' )
 
     db = get_db()
-    cur = db.cursor()
 
-    cur.execute( 'update users set name = %s, email = %s, password_hash = md5( %s ) where email = %s and password_hash is null', ( username, email, password, email ) )
-    db.commit()
+    rowcount = db.execute( text( 'update users set is_active = true, name = :name, email = :email, password_hash = md5( :salt || :password ) where email = :email and password_hash is null' ),
+        name = username, email = email, password = password, salt = app.config[ 'SECRET_KEY' ]
+    ).rowcount
 
-    if ( cur.rowcount == 0 ):
+    if ( rowcount == 0 ):
         return render_template( 'register.html', error = 'email already registered or not recognized; please contact gobbbbler administrator' )
 
     flash( 'You are registered.  Login to start gobbbbling.' )
 
     return redirect( url_for( 'login' ) )
 
-def require_user( request ):
-    """return a User corresponding to the users_id in the session or return False"""
+
+@app.route( '/api/posts/list', methods = [ 'GET' ] )
+def api_posts_list():
 
     db = get_db()
-    cur = db.cursor()
 
-    if ( not 'users_id' in session ):
-        return False;
-
-    users_id = session[ 'users_id' ]
-
-    cur.execute( "select users_id, name, email from users where users_id = %s and is_active", ( str( users_id ) ) )
-
-    user = cur.fetchone()
+    user = authenticate_user( db, request )
 
     if ( not user ):
-        return False;
+        return jsonify( { 'error': 'Unable to login with given username and password' } );
 
-    return User( id = user[ 'users_id' ], name = user[ 'name' ], email = user[ 'email' ] )
+    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ) ).fetchall
 
-class User:
-    """User object that is returned by require_user"""
-
-    def __init__( self, name, email, id ):
-        self.name = name
-        self.email = email
-        self.id = id
+    return jsonify( { 'posts': posts } )
