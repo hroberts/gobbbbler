@@ -13,7 +13,7 @@ media api.
 
 2. Instruct flask to use the right application
 
- export FLASK_APP=gobbbbler=gobbbbler
+ export FLASK_APP=gobbbbler.gobbbbler
 
 3. initialize the database with this command:
 
