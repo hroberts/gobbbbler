@@ -16,7 +16,7 @@ import sqlalchemy
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Date
 from sqlalchemy.sql import text
 
-from flask import Flask, request, session, g, redirect, url_for, abort, render_template, flash, jsonify
+from flask import g, Flask, request, session, redirect, url_for, abort, render_template, flash, jsonify
 
 # setup sqlalchemy database tables
 metadata = MetaData()
@@ -60,26 +60,22 @@ def connect_db():
         app.config[ 'DATABASE_HOST' ] + '/' +
         app.config[ 'DATABASE' ] );
 
-
 def init_db():
     """Initializes the database."""
     db = get_db()
     with app.open_resource( 'schema.sql', mode='r' ) as f:
         db.execute( f.read() )
 
-
 def get_db():
     """Opens a new database connection if there is none yet for the current application context.
     return a connection for that database."""
-    if not hasattr(g, 'sqlite_db'):
+    if ( g.get( 'db' ) is None ):
         g.db = connect_db()
     return g.db.connect()
 
-@app.teardown_appcontext
 def close_db(error):
-    """Closes the database again at the end of the request."""
-    if hasattr(g, 'sqlite_db'):
-        g.db.close()
+    """remove cached db handle"""
+    g.db = None
 
 # USER FUNCTIONS
 
@@ -223,6 +219,76 @@ def api_posts_list():
     if ( not user ):
         return jsonify( { 'error': 'Unable to login with given username and password' } );
 
-    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ) ).fetchall
+    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ) ).fetchall()
 
-    return jsonify( { 'posts': posts } )
+    posts_dict = [ ( dict( post.items() ) ) for post in posts ]
+
+    return jsonify( { 'posts': posts_dict } )
+
+@app.route( '/api/posts/search', methods = [ 'GET' ] )
+def api_posts_search():
+
+    db = get_db()
+
+    user = authenticate_user( db, request )
+
+    if ( not user ):
+        return jsonify( { 'error': 'Unable to login with given username and password' } );
+
+    query = request.values.get( 'q' )
+
+    if ( not query ):
+        query = ''
+
+    query = '%' + query + '%'
+
+    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) where post ilike :query order by posts_id desc limit 100' ), query = query ).fetchall()
+
+    posts_dict = [ ( dict( post.items() ) ) for post in posts ]
+
+    return jsonify( { 'posts': posts_dict } )
+
+@app.route( '/api/posts/user', methods = [ 'GET' ] )
+def api_posts_user():
+
+    db = get_db()
+
+    user = authenticate_user( db, request )
+
+    if ( not user ):
+        return jsonify( { 'error': 'Unable to login with given username and password' } );
+
+    user = request.values.get( 'user' )
+
+    if ( not user ):
+        return jsonify( { 'error': 'Must include user= parameter' } )
+
+    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) where u.name = :user order by posts_id desc limit 100' ), user = user ).fetchall()
+
+    posts_dict = [ ( dict( post.items() ) ) for post in posts ]
+
+    return jsonify( { 'posts': posts_dict } )
+
+@app.route( '/api/posts/send', methods = [ 'POST' ] )
+def api_posts_send():
+
+    db = get_db()
+
+    user = authenticate_user( db, request )
+
+    if ( not user ):
+        return jsonify( { 'error': 'Unable to login with given username and password' } )
+
+    if ( not request.is_json):
+        return jsonify( { 'error': 'Request is not json' } )
+
+    json_data = request.get_json()
+
+    if ( not 'post' in json_data ):
+        return jsonify( { 'error': 'JSON request does not include "post"' } )
+
+    post = json_data[ 'post' ]
+
+    post = db.execute( text( 'insert into posts ( users_id, post ) values ( :users_id, :post ) returning *' ), users_id = user[ 'users_id' ], post = post ).fetchone()
+
+    return jsonify( { 'post': dict( post.items() )  } );
