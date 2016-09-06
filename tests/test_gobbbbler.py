@@ -15,20 +15,45 @@ import tempfile
 
 from context import gobbbbler
 
+TEST_USERS =  [ { 'name': 'foo', 'password': 'foobar' }, { 'name': 'bar', 'password': 'barbar' } ]
+
 @pytest.fixture
 def client(request):
-    db_fd, gobbbbler.app.config['DATABASE'] = tempfile.mkstemp()
+
+    print( gobbbbler )
+
+    db_name = gobbbbler.app.config['DATABASE']
+    test_db_name = db_name + "_test"
+
+    db = gobbbbler.get_db()
+    db.execute( 'create database ' + test_db_name );
+    gobbbbler.close_db()
+
+    gobbbbler.app.config['DATABASE'] = test_db_name
     gobbbbler.app.config['TESTING'] = True
+
     client = gobbbbler.app.test_client()
     with gobbbbler.app.app_context():
         gobbbbler.init_db()
+        setup_test_data()
 
     def teardown():
-        os.close(db_fd)
-        os.unlink(gobbbbler.app.config['DATABASE'])
+        gobbbbler.close_db();
+        gobbbbler.app.config['DATABASE'] = db_name
+        # gobbbbler.get_db().execute( 'drop database ' + test_db_name )
+
     request.addfinalizer(teardown)
 
     return client
+
+def setup_test_data( client ):
+    """add test data to db"""
+    db = gobbbbler.get_db()
+    for user in TEST_USERS:
+        new_user = db.execute( text( "insert into users ( name, password_hash ) values ( :name, md5( :password ) ) returning *" ), user )
+        posts = [ 'first post', 'second post' ]
+        for post in posts:
+            db.execute( text( "insert into posts ( users_id, post ) values ( :users_id, :post )" ), users_id = new_user[ 'users_id' ], post = new_user[ 'name' ] + post )
 
 
 def login(client, username, password):
@@ -42,35 +67,24 @@ def logout(client):
     return client.get('/logout', follow_redirects=True)
 
 
-def test_empty_db(client):
-    """Start with a blank database."""
-    rv = client.get('/')
-    assert b'No entries here so far' in rv.data
-
-
 def test_login_logout(client):
     """Make sure login and logout works"""
-    rv = login(client, gobbbbler.app.config['USERNAME'],
-               gobbbbler.app.config['PASSWORD'])
-    assert b'You were logged in' in rv.data
+    rv = login(client, TEST_USER[ 0 ][ 'name' ], TEST_USER[ 0 ][ 'password' ])
+    assert b'log out' in rv.data
     rv = logout(client)
     assert b'You were logged out' in rv.data
-    rv = login(client, gobbbbler.app.config['USERNAME'] + 'x',
-               gobbbbler.app.config['PASSWORD'])
-    assert b'Invalid username' in rv.data
-    rv = login(client, gobbbbler.app.config['USERNAME'],
-               gobbbbler.app.config['PASSWORD'] + 'x')
-    assert b'Invalid password' in rv.data
+    rv = login(client,'invalid user name', TEST_USER[ 0 ][ 'password' ])
+    assert b'Login failed' in rv.data
+    rv = login(client, TEST_USER[ 0 ][ 'name' ], 'invalid password')
+    assert b'Login failed' in rv.data
 
 
 def test_messages(client):
     """Test that messages work"""
-    login(client, gobbbbler.app.config['USERNAME'],
-          gobbbbler.app.config['PASSWORD'])
-    rv = client.post('/add', data=dict(
-        title='<Hello>',
-        text='<strong>HTML</strong> allowed here'
-    ), follow_redirects=True)
-    assert b'No entries here so far' not in rv.data
-    assert b'&lt;Hello&gt;' in rv.data
-    assert b'<strong>HTML</strong> allowed here' in rv.data
+    rv = login(client, TEST_USER[ 0 ][ 'name' ], TEST_USER[ 0 ][ 'password' ])
+    # rv = client.post('/add', data=dict(
+    #     title='<Hello>',
+    #     text='<strong>HTML</strong> allowed here'
+    # ), follow_redirects=True)
+    assert b'first post' in rv.data
+    assert b'second post' in rv.data
