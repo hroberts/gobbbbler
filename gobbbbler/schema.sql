@@ -3,7 +3,7 @@ create table users (
     name            text not null,
     email           text not null,
     password_hash   varchar(32),
-    is_active       boolean not null default false
+    is_active       boolean not null default true
 );
 
 create unique index users_name on users ( name );

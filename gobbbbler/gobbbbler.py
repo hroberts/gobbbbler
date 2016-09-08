@@ -53,12 +53,16 @@ app.config.from_envvar( 'GOBBBBLER_SETTINGS', silent=True )
 
 def connect_db():
     """Connects to the specific database."""
+
+    # use nullpool because pooling breaks unit tests and we don't need the performance
     return sqlalchemy.create_engine(
         'postgresql://' +
         app.config[ 'DATABASE_USER' ] + ':' +
         app.config[ 'DATABASE_PASSWORD' ] + '@' +
         app.config[ 'DATABASE_HOST' ] + '/' +
-        app.config[ 'DATABASE' ] );
+        app.config[ 'DATABASE' ],
+        poolclass = sqlalchemy.pool.NullPool
+    )
 
 def init_db():
     """Initializes the database."""
@@ -71,10 +75,14 @@ def get_db():
     return a connection for that database."""
     if ( g.get( 'db' ) is None ):
         g.db = connect_db()
+
     return g.db.connect()
 
-def close_db(error):
+def close_db():
     """remove cached db handle"""
+    if ( not g.get( 'db' ) is None ):
+        g.db.dispose()
+
     g.db = None
 
 # USER FUNCTIONS
@@ -83,7 +91,6 @@ def close_db(error):
 def initdb_command():
     """Creates the database tables."""
     init_db()
-    print('Initialized the database.')
 
 
 def authenticate_user( db, request ):
@@ -157,7 +164,6 @@ def add_post():
     return redirect( url_for( 'show_posts' ) )
 
 
-
 @app.route( '/login', methods=[ 'GET', 'POST' ] )
 def login():
 
@@ -219,7 +225,7 @@ def api_posts_list():
     if ( not user ):
         return jsonify( { 'error': 'Unable to login with given username and password' } );
 
-    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ) ).fetchall()
+    posts = db.execute( text( 'select u.users_id, u.name user_name, posts_id, post, post_date from posts p join users u using ( users_id ) order by posts_id desc limit 100' ) ).fetchall()
 
     posts_dict = [ ( dict( post.items() ) ) for post in posts ]
 
@@ -233,7 +239,7 @@ def api_posts_search():
     user = authenticate_user( db, request )
 
     if ( not user ):
-        return jsonify( { 'error': 'Unable to login with given username and password' } );
+        return jsonify( { 'error': 'Unable to login with given username and password' } )
 
     query = request.values.get( 'q' )
 
@@ -242,7 +248,7 @@ def api_posts_search():
 
     query = '%' + query + '%'
 
-    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) where post ilike :query order by posts_id desc limit 100' ), query = query ).fetchall()
+    posts = db.execute( text( 'select u.users_id, u.name user_name, posts_id, post, post_date from posts p join users u using ( users_id ) where post ilike :query order by posts_id desc limit 100' ), query = query ).fetchall()
 
     posts_dict = [ ( dict( post.items() ) ) for post in posts ]
 
@@ -263,7 +269,7 @@ def api_posts_user():
     if ( not user ):
         return jsonify( { 'error': 'Must include user= parameter' } )
 
-    posts = db.execute( text( 'select u.users_id, u.name user_name, post, post_date from posts p join users u using ( users_id ) where u.name = :user order by posts_id desc limit 100' ), user = user ).fetchall()
+    posts = db.execute( text( 'select u.users_id, u.name user_name, posts_id, post, post_date from posts p join users u using ( users_id ) where u.name = :user order by posts_id desc limit 100' ), user = user ).fetchall()
 
     posts_dict = [ ( dict( post.items() ) ) for post in posts ]
 
@@ -291,4 +297,4 @@ def api_posts_send():
 
     post = db.execute( text( 'insert into posts ( users_id, post ) values ( :users_id, :post ) returning *' ), users_id = user[ 'users_id' ], post = post ).fetchone()
 
-    return jsonify( { 'post': dict( post.items() )  } );
+    return jsonify( { 'posts': [ dict( post.items() )  ] } );

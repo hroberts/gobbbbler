@@ -5,7 +5,7 @@ setup(
     packages=['gobbbbler'],
     include_package_data=True,
     install_requires=[
-        'flask', 'sqlalchemy'
+        'flask', 'sqlalchemy', 'requests'
     ],
     setup_requires=[
         'pytest-runner',
