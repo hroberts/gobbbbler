@@ -12,6 +12,7 @@
 
 import os
 import sqlalchemy
+import time
 
 from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey, Date
 from sqlalchemy.sql import text
@@ -160,6 +161,9 @@ def add_post():
     db = get_db()
 
     db.execute( text( 'insert into posts ( users_id, post ) values ( :users_id, :post )' ), users_id = user[ 'users_id' ], post = post )
+
+    # sleep for one second to give any scripts time to respond before loading posts
+    time.sleep( 1 )
 
     return redirect( url_for( 'show_posts' ) )
 
