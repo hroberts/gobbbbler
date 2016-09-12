@@ -162,8 +162,8 @@ def add_post():
 
     db.execute( text( 'insert into posts ( users_id, post ) values ( :users_id, :post )' ), users_id = user[ 'users_id' ], post = post )
 
-    # sleep for one second to give any scripts time to respond before loading posts
-    time.sleep( 1 )
+    # sleep for two seconds to give any scripts time to respond before loading posts
+    time.sleep( 2 )
 
     return redirect( url_for( 'show_posts' ) )
 
