@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 import time
 
@@ -33,6 +34,10 @@ class Turkey:
         if ( post is None ):
             raise ValueError( "post is required" )
 
+        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+            print( "gobbbbler test output: " + post )
+            return
+
         params = { 'username': self.username, 'password': self.password  };
         r = requests.post( self.url + "/api/posts/send", params = params, json = { 'post': post } )
 
@@ -43,6 +48,9 @@ class Turkey:
 
     def list( self ):
         """ return a list of the text of the last 1000 posts """
+
+        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+            raise Error( 'list not possible in test mode' )
 
         params = { 'username': self.username, 'password': self.password  };
         r = requests.get( self.url + "/api/posts/list", params = params )
@@ -81,6 +89,9 @@ class Turkey:
 
         if ( user is None ):
             raise ValueError( "user is required" )
+
+        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+            return input( 'gobbler test input (' + user + '): ' )
 
         existing_post = self._get_first_user_post( user )
 
