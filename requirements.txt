@@ -2,4 +2,3 @@ flask==0.11.1
 SQLAlchemy==1.10.14
 requests==2.11.1
 pytest==3.0.2
-psycopg2
