@@ -34,7 +34,7 @@ class Turkey:
         if ( post is None ):
             raise ValueError( "post is required" )
 
-        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+        if ( ( 'GOBBBBLERTESTMODE' in os.environ ) and ( os.environ[ 'GOBBBBLERTESTMODE' ] ) ):
             print( "gobbbbler test output: " + post )
             return
 
