@@ -49,7 +49,7 @@ class Turkey:
     def list( self ):
         """ return a list of the text of the last 1000 posts """
 
-        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+        if ( ( 'GOBBBBLERTESTMODE' in os.environ ) and ( os.environ[ 'GOBBBBLERTESTMODE' ] ) ):
             raise Error( 'list not possible in test mode' )
 
         params = { 'username': self.username, 'password': self.password  };
@@ -90,7 +90,7 @@ class Turkey:
         if ( user is None ):
             raise ValueError( "user is required" )
 
-        if ( os.environ[ 'GOBBLERTESTMODE' ] ):
+        if ( ( 'GOBBBBLERTESTMODE' in os.environ ) and ( os.environ[ 'GOBBBBLERTESTMODE' ] ) ):
             return input( 'gobbler test input (' + user + '): ' )
 
         existing_post = self._get_first_user_post( user )
