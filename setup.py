@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='gobbbbler',
-    version='0.2',
+    version='0.3',
     packages=['gobbbbler'],
     include_package_data=True,
     install_requires=[
